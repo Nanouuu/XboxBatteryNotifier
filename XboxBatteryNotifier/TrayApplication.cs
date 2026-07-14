@@ -5,6 +5,7 @@
         private readonly NotifyIcon _notifyIcon;
         private readonly BatteryMonitor _batteryMonitor;
         private readonly ControllerDetector _controllerDetector;
+        private readonly BatteryAlertService _batteryAlertService;
 
         public TrayApplication()
         {
@@ -13,10 +14,12 @@
 
             _notifyIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = new Icon("Resources/icon.ico"),
                 Visible = true,
                 Text = "Xbox Battery Notifier"
             };
+
+            _batteryAlertService = new BatteryAlertService(_batteryMonitor, _notifyIcon);
 
             SetMenu();
             SetControllerDetector();
@@ -54,6 +57,7 @@
                         ToolTipIcon.Info
                     );
                 }
+                _batteryAlertService.Start();
             };
 
             _controllerDetector.ControllerDisconnected += (name) =>
@@ -64,6 +68,7 @@
                     $"{name} disconnected",
                     ToolTipIcon.Info
                 );
+                _batteryAlertService.Stop();
             };
 
             _controllerDetector.Start();
@@ -86,6 +91,7 @@
 
         public void Dispose()
         {
+            _batteryAlertService.Dispose();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
 
