@@ -7,8 +7,7 @@ namespace XboxBatteryNotifier
         {
             ApplicationConfiguration.Initialize();
 
-            var app = new TrayApplication();
-            app.Start();
+            using var app = new TrayApplication();
 
             Application.Run();
         }
