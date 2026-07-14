@@ -4,10 +4,12 @@
     {
         private readonly NotifyIcon _notifyIcon;
         private readonly BatteryMonitor _batteryMonitor;
+        private readonly ControllerDetector _controllerDetector;
 
         public TrayApplication()
         {
             _batteryMonitor = new BatteryMonitor();
+            _controllerDetector = new ControllerDetector();
 
             _notifyIcon = new NotifyIcon
             {
@@ -16,6 +18,12 @@
                 Text = "Xbox Battery Notifier"
             };
 
+            SetMenu();
+            SetControllerDetector();
+        }
+
+        private void SetMenu()
+        {
             var menu = new ContextMenuStrip();
 
             var showBatDebug = new ToolStripMenuItem("Bat debug");
@@ -29,6 +37,36 @@
             menu.Items.Add(quitItem);
 
             _notifyIcon.ContextMenuStrip = menu;
+        }
+
+        private void SetControllerDetector()
+        {
+            _controllerDetector.ControllerConnected += async (name) =>
+            {
+                var battery = await _batteryMonitor.GetBatteryAsync();
+
+                if (battery.HasValue)
+                {
+                    _notifyIcon.ShowBalloonTip(
+                        3000,
+                        "Xbox Controller",
+                        $"{name} is connected.\nBattery: {battery}%",
+                        ToolTipIcon.Info
+                    );
+                }
+            };
+
+            _controllerDetector.ControllerDisconnected += (name) =>
+            {
+                _notifyIcon.ShowBalloonTip(
+                    3000,
+                    "Xbox Controller",
+                    $"{name} disconnected",
+                    ToolTipIcon.Info
+                );
+            };
+
+            _controllerDetector.Start();
         }
 
         private async void CheckBattery()
