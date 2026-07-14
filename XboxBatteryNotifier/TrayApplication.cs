@@ -1,4 +1,6 @@
-﻿namespace XboxBatteryNotifier
+﻿using System.Reflection;
+
+namespace XboxBatteryNotifier
 {
     public class TrayApplication : IDisposable
     {
@@ -9,12 +11,14 @@
 
         public TrayApplication()
         {
+            var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("XboxBatteryNotifier.Resources.icon.ico");
+
             _batteryMonitor = new BatteryMonitor();
             _controllerDetector = new ControllerDetector();
 
             _notifyIcon = new NotifyIcon
             {
-                Icon = new Icon("Resources/icon.ico"),
+                Icon = new Icon(stream!),
                 Visible = true,
                 Text = "Xbox Battery Notifier"
             };
