@@ -1,33 +1,51 @@
-﻿using System.Media;
-using System.Windows.Forms;
+﻿using Windows.Devices.Haptics;
+using Windows.Gaming.Input;
 
 namespace XboxBatteryNotifier
 {
     public enum BatteryAlertLevel
     {
         Normal,
-        AlertedAt30,
-        AlertedAt10
+        WarningLevel,
+        CriticalLevel
     }
 
     public class BatteryAlertService : IDisposable
     {
-        private const int ThresholdWarning = 30;
-        private const int ThresholdCritical = 10;
-        private static readonly TimeSpan PollingInterval = TimeSpan.FromMinutes(5);
+        #region Properties
+        private readonly int _thresholdWarning;
+        private readonly int _thresholdCritical;
+        private readonly TimeSpan _pollingInterval;
 
         private readonly BatteryMonitor _batteryMonitor;
-        private readonly NotifyIcon _notifyIcon;
-        private readonly System.Threading.Timer _timer;
+        private readonly Timer _timer;
 
         private BatteryAlertLevel _currentLevel = BatteryAlertLevel.Normal;
+        #endregion
 
-        public BatteryAlertService(BatteryMonitor batteryMonitor, NotifyIcon notifyIcon)
+        private static Gamepad? _currentGamepad = Gamepad.Gamepads.FirstOrDefault();
+
+        static BatteryAlertService()
+        {
+            Gamepad.GamepadAdded += (_, gamepad) => _currentGamepad = gamepad;
+            Gamepad.GamepadRemoved += (_, gamepad) =>
+            {
+                if (_currentGamepad == gamepad) _currentGamepad = null;
+            };
+        }
+
+        public BatteryAlertService(
+            BatteryMonitor batteryMonitor, 
+            int thresholdWarning, 
+            int thresholdCritical, 
+            TimeSpan pollingInterval)
         {
             _batteryMonitor = batteryMonitor;
-            _notifyIcon = notifyIcon;
+            _thresholdWarning = thresholdWarning;
+            _thresholdCritical = thresholdCritical;
+            _pollingInterval = pollingInterval;
 
-            _timer = new System.Threading.Timer(
+            _timer = new Timer(
                 _ => _ = CheckAsync(),
                 null,
                 Timeout.Infinite,
@@ -37,7 +55,7 @@ namespace XboxBatteryNotifier
 
         public void Start()
         {
-            _timer.Change(TimeSpan.Zero, PollingInterval);
+            _timer.Change(TimeSpan.Zero, _pollingInterval);
         }
 
         public void Stop()
@@ -55,19 +73,19 @@ namespace XboxBatteryNotifier
 
             int level = battery.Value;
 
-            if (level <= ThresholdCritical)
+            if (level <= _thresholdCritical)
             {
-                if (_currentLevel != BatteryAlertLevel.AlertedAt10)
+                if (_currentLevel != BatteryAlertLevel.CriticalLevel)
                 {
-                    _currentLevel = BatteryAlertLevel.AlertedAt10;
+                    _currentLevel = BatteryAlertLevel.CriticalLevel;
                     NotifyCritical(level);
                 }
             }
-            else if (level <= ThresholdWarning)
+            else if (level <= _thresholdWarning)
             {
-                if (_currentLevel != BatteryAlertLevel.AlertedAt30 && _currentLevel != BatteryAlertLevel.AlertedAt10)
+                if (_currentLevel != BatteryAlertLevel.WarningLevel && _currentLevel != BatteryAlertLevel.CriticalLevel)
                 {
-                    _currentLevel = BatteryAlertLevel.AlertedAt30;
+                    _currentLevel = BatteryAlertLevel.WarningLevel;
                     NotifyWarning(level);
                 }
             }
@@ -77,28 +95,63 @@ namespace XboxBatteryNotifier
             }
         }
 
-        private void NotifyWarning(int level)
+        private static async Task RumbleAsync(int pulseCount, int pulseDuration, double intensity)
         {
-            _notifyIcon.ShowBalloonTip(
-                4000,
-                "Manette Xbox",
-                $"Batterie faible : {level}%",
-                ToolTipIcon.Warning
-            );
+            var controller = RawGameController.RawGameControllers.FirstOrDefault();
+            var haptics = controller?.SimpleHapticsControllers.FirstOrDefault();
 
-            SystemSounds.Exclamation.Play();
+            if (haptics is null)
+            {
+                Console.WriteLine("[Rumble] Pas de retour haptique disponible sur ce contrôleur.");
+                return;
+            }
+
+            var feedback = haptics.SupportedFeedback
+                .FirstOrDefault(f => f.Waveform == KnownSimpleHapticsControllerWaveforms.Click)
+                ?? haptics.SupportedFeedback.FirstOrDefault();
+
+            if (feedback is null)
+            {
+                Console.WriteLine("[Rumble] Aucun waveform supporté trouvé.");
+                return;
+            }
+
+            for (int i = 0; i < pulseCount; i++)
+            {
+                haptics.SendHapticFeedback(feedback, intensity);
+                await Task.Delay(pulseDuration);
+
+                haptics.StopFeedback();
+
+                if (i < pulseCount - 1)
+                    await Task.Delay(150);
+            }
         }
 
-        private void NotifyCritical(int level)
+    private static void NotifyWarning(int level)
         {
-            _notifyIcon.ShowBalloonTip(
-                6000,
-                "Manette Xbox",
-                $"Batterie critique : {level}% — pense à la recharger !",
-                ToolTipIcon.Error
-            );
+            PlayWarningTone();
+            _ = RumbleAsync(pulseCount: 2, pulseDuration: 150, intensity: 1);
+        }
 
-            SystemSounds.Hand.Play();
+        private static void NotifyCritical(int level)
+        {
+            PlayCriticalTone();
+            _ = RumbleAsync(pulseCount: 3, pulseDuration: 300, intensity: 1);
+        }
+
+        private static void PlayWarningTone()
+        {
+            Console.Beep(880, 150);
+            Console.Beep(880, 150);
+        }
+
+        private static void PlayCriticalTone()
+        {
+            Console.Beep(1046, 100);
+            Console.Beep(880, 100);
+            Console.Beep(1046, 100);
+            Console.Beep(880, 100);
         }
 
         public void Dispose()
